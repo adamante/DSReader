@@ -50,12 +50,19 @@
     <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
+  <PropertyGroup>
+    <SignAssembly>true</SignAssembly>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AssemblyOriginatorKeyFile>DSReaderKey.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="OneWireAPI.NET">
       <HintPath>..\..\..\..\..\Downloads\1-wiresdkver400\Examples\OW.NET\C#\bin\OneWireAPI.NET.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Data" />
+    <Reference Include="System.EnterpriseServices" />
     <Reference Include="System.Xml" />
     <Reference Include="vjslib" />
   </ItemGroup>
@@ -65,6 +72,9 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="OneWireAPI.NET.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="DSReaderKey.snk" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
