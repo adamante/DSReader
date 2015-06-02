@@ -16,6 +16,7 @@ namespace DSReader
     public interface DSReader_Interface
     {
         long GetID(int timeout = 10);
+        string GetIDStr(int timeout = 10);
     }
 
     [Guid("AB634001-F13D-11d0-A459-004095E1DAEA")]
@@ -88,6 +89,29 @@ namespace DSReader
                 return -1;
             }
             
+        }
+
+        public string GetIDStr(int timeout = 10)
+        {
+            try
+            {
+                var a = GetID(timeout);
+
+                switch (a)
+                {
+                    case 0:
+                        return "NOT_FOUND";
+                    case -1:
+                        return "DRIVER_ERROR";
+                    default:
+                        return a.ToString("X");    
+                }
+            }
+            catch (Exception)
+            {
+                return "ERROR";
+            }
+
         }
 
         public Reader()
