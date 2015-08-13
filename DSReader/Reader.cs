@@ -4,10 +4,10 @@ using System.Text;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.EnterpriseServices;
+using System.Threading;
 
-using com.dalsemi.onewire;
-using com.dalsemi.onewire.adapter;
-using com.dalsemi.onewire.application.monitor;
+using Microsoft.Win32.SafeHandles;
+using System.IO;
 
 namespace DSReader
 {
@@ -34,36 +34,63 @@ namespace DSReader
         ClassInterface(ClassInterfaceType.AutoDual)]
     public class Reader : DSReader_Interface, IInitDone
     {
+        private const string deviceName = @"\\.\touchm0";
+        private const int idArraySize = 8;
+        private const uint ioctlPresenceDetect = 0x226A90;
+
+        private byte[] result = new byte[idArraySize] { 0, 0, 0, 0, 0, 0, 0, 0 };
+        private uint outBytes = 0;
+
+        #region Import signatures
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool DeviceIoControl(
+            SafeFileHandle hDevice,
+            uint IoControlCode,
+            IntPtr InBuffer,
+            uint nInBufferSize,
+            IntPtr OutBuffer,
+            uint nOutBufferSize,
+            ref uint pBytesReturned,
+            IntPtr Overlapped
+        );
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        static extern SafeFileHandle CreateFile(
+            string lpFileName,
+            [MarshalAs(UnmanagedType.U4)] FileAccess dwDesiredAccess,
+            [MarshalAs(UnmanagedType.U4)] FileShare dwShareMode,
+            IntPtr lpSecurityAttributes,
+            [MarshalAs(UnmanagedType.U4)] FileMode dwCreationDisposition,
+            [MarshalAs(UnmanagedType.U4)] FileAttributes dwFlagsAndAttributes,
+            IntPtr hTemplateFile);
+        #endregion
+
+
         // @timeout -  time in seconds during which network gets polled
         // returns unsigned 64-bit ID of first iButton detected during selected timeframe
         // returns 0 if no iButton device was presented)
-        // return -1 if an exception is raised (1-Wire network not available, most likely driver misconfig)
+        // return -1 if an exception is raised (receptor device not present)
         public long GetID(int timeout = 10)
         {
             try
             {
-                // adapter init. 1-Wire Default Device must be selected in driver beforehand!
-                DSPortAdapter adapter = OneWireAccessProvider.getDefaultAdapter();
-                DeviceMonitor dMonitor;
-                
-                // vectors for J# interop
-                java.util.Vector arrivals = new java.util.Vector();
-                java.util.Vector departures = new java.util.Vector();
+                // safe Win32 handle to device
+                var handle = CreateFile(deviceName,
+                                    FileAccess.ReadWrite,
+                                    FileShare.ReadWrite,
+                                    IntPtr.Zero,
+                                    FileMode.Open,
+                                    FileAttributes.Normal,
+                                    IntPtr.Zero);
 
-                // get exclusive use of adapter
-                adapter.beginExclusive(true);
+                if (handle.IsInvalid)
+                {
+                    return -1;
+                }
 
-                // clear any previous search restrictions
-                adapter.setSearchAllDevices();
-                adapter.targetAllFamilies();
-                adapter.setSpeed(DSPortAdapter.SPEED_REGULAR);
-
-                // release exclusive use of adapter
-                adapter.endExclusive();
-
-                // Monitor of the network
-                dMonitor = new DeviceMonitor(adapter);
-                dMonitor.setDoAlarmSearch(false);
+                // memalloc for iocontrol return byte[]
+                // all iButton ID's are now 8 bytes long, so idArraySize = 8
+                IntPtr res = Marshal.AllocHGlobal(idArraySize);
 
                 System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
                 sw.Start();
@@ -71,21 +98,33 @@ namespace DSReader
                 // enforcing internal timeout
                 while (sw.Elapsed <= TimeSpan.FromSeconds(timeout))
                 {
-                    dMonitor.search(arrivals, departures);
-
-                    if (arrivals.size() != 0)
+                    // continuously sending ioctl to device, waiting for success
+                    bool success = DeviceIoControl(handle,
+                                                ioctlPresenceDetect,
+                                                IntPtr.Zero,
+                                                0,
+                                                res,
+                                                (uint)idArraySize,
+                                                ref outBytes,
+                                                IntPtr.Zero);
+                    if (success)
                     {
-                        // found device, returning it's address as unsigned long
-                        return ((java.lang.Long)arrivals.firstElement()).longValue();
+                        // device was found, getting data from unmanaged memory, freeing & returning
+                        Marshal.Copy(res, result, 0, idArraySize);
+                        Marshal.FreeHGlobal(res);
+
+                        return BitConverter.ToInt64(result, 0);
                     }
+
+                    Thread.Sleep(10);
                 }
 
-                // no iButton detected
+                // no iButton detected before timeout
                 return 0;
             }
             catch (Exception)
             {
-                // 1-Wire Net is unavailiable (no receptor detected/driver misconfiguration)
+                // well, something's wrong
                 return -1;
             }
             
@@ -109,13 +148,15 @@ namespace DSReader
             }
             catch (Exception)
             {
-                return "ERROR";
+                // we shouldn't really land here, but just in case
+                return "GENERAL_ERROR";
             }
 
         }
 
         public Reader()
-        { }
+        {
+        }
 
         public void Init([MarshalAs(UnmanagedType.IDispatch)][In] object pBackConnection)
         {

@@ -12,11 +12,13 @@ namespace DSReaderSample
             Console.WriteLine("Press any key to get iButton ID");
             Console.ReadKey();
 
+            var reader = new Reader();
+
         getID:
             Console.WriteLine();
             Console.WriteLine("Touch your iButton device to a receptor. You have 10 seconds");
             
-            var ID = new Reader().GetID();
+            var ID = reader.GetID();
 
             switch (ID)
             {
